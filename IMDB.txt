@@ -1,31 +1,56 @@
-from keras.datasets import imdb
-
-(train_data, train_label), (test_data, test_label) = imdb.load_data(num_words = 10000)
 
 import numpy as np
+from tensorflow import keras
+from tensorflow.keras.datasets import imdb
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Embedding, LSTM
+from tensorflow.keras.preprocessing import sequence
 
-def vectorize_sequences(sequences, dimensions = 10000):
-  results = np.zeros((len(sequences), dimensions))
-  for i,sequences in enumerate(sequences):
-    results[i, sequences] = 1
-  return results
+# Set the maximum number of words to be used as features
+max_features = 5000
 
-x_train = vectorize_sequences(train_data)
-y_train = vectorize_sequences(test_data)
+# Load the IMDB dataset
+(x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=max_features)
 
-y_train = np.asarray(train_label).astype('float32')
-y_test = np.asarray(test_label).astype('float32')
+maxlen = 200  # Maximum sequence length
 
-from keras.models import Sequential
-from keras.layers import Dense
+x_train = sequence.pad_sequences(x_train, maxlen=maxlen)
+x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
+
+
+embedding_size = 128  # Embedding dimension
+hidden_units = 64     # Number of units in the LSTM layer
 
 model = Sequential()
-model.add(Dense(16, input_shape=(10000, ), activation = "relu"))
-model.add(Dense(16, activation = "relu"))
-model.add(Dense(1, activation = "sigmoid"))
+model.add(Embedding(max_features, embedding_size, input_length=maxlen))
+model.add(LSTM(hidden_units))
+model.add(Dense(1, activation='sigmoid'))
 
-model.compile(optimizer='adam', loss = 'mse', metrics = ['accuracy'])
-
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 model.summary()
 
-history = model.fit(x_train, y_train, validation_split = 0.3, epochs = 20, verbose = 1, batch_size = 512)
+batch_size = 64
+epochs = 5
+
+model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, validation_data=(x_test, y_test))
+
+# Example review for prediction
+review = "This movie was excellent"
+
+# Preprocess the review by converting it to a sequence of word indices
+word_indices = imdb.get_word_index()
+review_sequence = []
+for word in review.split():
+    if word in word_indices and word_indices[word] < max_features:
+        review_sequence.append(word_indices[word] + 3)  # Add 3 to match the index offset in the IMDB dataset
+review_sequence = sequence.pad_sequences([review_sequence], maxlen=maxlen)
+
+# Make predictions
+prediction = model.predict(review_sequence)
+sentiment = "positive" if prediction >= 0.5 else "negative"
+confidence = prediction[0] if sentiment == "positive" else 1 - prediction[0]
+confidence = confidence[0]  # Extract scalar value
+
+print("Review: {}".format(review))
+print("Sentiment: {}".format(sentiment))
+print("Confidence: {:.2f}%".format(confidence * 100))
